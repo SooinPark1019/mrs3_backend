@@ -1,0 +1,104 @@
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.responses import FileResponse
+import os
+import uuid
+from pathlib import Path
+
+from validators import parse_polygons, validate_scaler
+
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), 'MRS3/ServerInterface'))
+import MRS3.ServerInterface.ImgToPkg_Interface as imgpkg
+import MRS3.ServerInterface.PkgToImg_Interface as pkgimg
+
+app = FastAPI()
+
+TEMP_DIR = "temp"
+
+def ensure_temp_dir():
+    """임시 폴더가 없으면 생성."""
+    os.makedirs(TEMP_DIR, exist_ok=True)
+
+def get_unique_path(filename: str, suffix: str = "") -> str:
+    """uuid와 원본 파일명, 옵션 suffix로 유니크 경로 생성."""
+    session_id = str(uuid.uuid4())
+    safe_name = Path(filename).name  # 보안: 디렉토리 오염 방지
+    return os.path.join(TEMP_DIR, f"{session_id}_{suffix}{safe_name}")
+
+async def save_upload_file(upload_file: UploadFile, dest_path: str):
+    """업로드 파일을 지정 경로에 저장 (비동기 지원)."""
+    with open(dest_path, "wb") as f:
+        f.write(await upload_file.read())
+
+@app.post("/compress")
+async def compress_image(
+    image: UploadFile = File(...),
+    polygons: str = Form(...),
+    scaler: int = Form(2)
+):
+    """
+    이미지와 다각형 ROI 정보를 받아 .pkg 파일로 압축해 반환하는 API
+
+    - image: 업로드 이미지 파일
+    - polygons: 다각형 좌표 리스트(JSON 문자열)
+    - scaler: 다운스케일 배율(2, 3, 4 중 하나)
+    """
+    # [1] 입력값 검증
+    polygons_data = parse_polygons(polygons)
+    scaler = validate_scaler(scaler)
+
+    # [2] 임시 파일 저장 경로 생성 및 저장
+    ensure_temp_dir()
+    image_path = get_unique_path(image.filename)
+    await save_upload_file(image, image_path)
+
+    # [3] 패키지(.pkg) 파일 생성
+    pkg_path = imgpkg.compress_img_mult_tgs_server(
+        img_path=image_path,
+        output_path=TEMP_DIR,
+        scaler=scaler,
+        roi_point_lists=polygons_data
+    )
+    if not pkg_path or not os.path.exists(pkg_path):
+        raise HTTPException(status_code=500, detail="패키지 생성 실패")
+
+    # [4] (선택) 원본 업로드 파일 삭제 가능
+    # os.remove(image_path)
+
+    # [5] .pkg 파일 반환
+    return FileResponse(pkg_path, filename="output.pkg", media_type="application/octet-stream")
+
+
+@app.post("/restore")
+async def restore_image(
+    pkg: UploadFile = File(...),
+    mrs3_mode: int = Form(-1)  # EDSR: -1, 그 외는 cv2 인터폴레이션 번호
+):
+    """
+    .pkg 파일을 받아 복원 이미지를 반환하는 API
+
+    - pkg: 업로드된 .pkg 파일
+    - mrs3_mode: 업스케일 방식(-1=EDSR, 0/1/2 등은 cv2 방식)
+    """
+    # [1] 임시 파일 경로 생성 및 저장
+    ensure_temp_dir()
+    pkg_path = get_unique_path(pkg.filename)
+    await save_upload_file(pkg, pkg_path)
+
+    # [2] 언팩 디렉토리 생성(유니크)
+    unpacked_dir = get_unique_path(pkg.filename, suffix="unpacked_")
+    os.makedirs(unpacked_dir, exist_ok=True)
+
+    # [3] .pkg 언팩 및 복원 이미지 생성
+    pkgimg.unpack_files(pkg_path, unpacked_dir)
+    pkgimg.restore_img_mult_tgs(
+        input_path=unpacked_dir,
+        mrs3_mode=mrs3_mode,
+        output_path=TEMP_DIR
+    )
+    restored_image_path = os.path.join(TEMP_DIR, "restored.png")
+    if not os.path.exists(restored_image_path):
+        raise HTTPException(status_code=500, detail="복원 이미지 생성 실패")
+
+    # [4] 복원 이미지 반환
+    return FileResponse(restored_image_path, filename="restored.png", media_type="image/png")
