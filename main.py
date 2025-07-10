@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 import os
 import uuid
 from pathlib import Path
@@ -12,6 +13,15 @@ import MRS3.ServerInterface.ImgToPkg_Interface as imgpkg
 import MRS3.ServerInterface.PkgToImg_Interface as pkgimg
 
 app = FastAPI()
+
+# CORS 설정 추가
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # Next.js 개발 서버 주소
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 TEMP_DIR = "temp"
 
