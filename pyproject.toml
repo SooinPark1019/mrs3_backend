@@ -1,21 +1,18 @@
-[project]
+[tool.poetry]
 name = "mrs3-backend"
 version = "0.1.0"
 description = ""
-authors = [
-    {name = "SooinPark1019",email = "hyperion1019@naver.com"}
-]
+authors = ["SooinPark1019 <hyperion1019@naver.com>"]
 readme = "README.md"
-requires-python = ">=3.13"
-dependencies = [
-    "fastapi (>=0.116.0,<0.117.0)",
-    "uvicorn[standard] (>=0.35.0,<0.36.0)",
-    "opencv-python (>=4.12.0.88,<5.0.0.0)",
-    "multipledispatch (>=1.0.0,<2.0.0)",
-    "python-multipart (>=0.0.20,<0.0.21)",
-]
 
+[tool.poetry.dependencies]
+python = ">=3.12"
+fastapi = ">=0.116.0,<0.117.0"
+uvicorn = {extras = ["standard"], version = ">=0.35.0,<0.36.0"}
+opencv-python = ">=4.12.0.88,<5.0.0.0"
+multipledispatch = ">=1.0.0,<2.0.0"
+python-multipart = ">=0.0.20,<0.0.21"
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
+requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
