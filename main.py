@@ -44,39 +44,51 @@ async def save_upload_file(upload_file: UploadFile, dest_path: str):
 async def compress_image(
     image: UploadFile = File(...),
     polygons: str = Form(...),
-    scaler: int = Form(2)
+    scaler: int = Form(2),
+    use_imgpresso: bool = Form(False),
 ):
     """
-    이미지와 다각형 ROI 정보를 받아 .pkg 파일로 압축해 반환하는 API
+    업로드된 이미지와 ROI(관심영역) 정보로 패키지(.pkg) 파일을 생성하여 반환합니다.
 
-    - image: 업로드 이미지 파일
-    - polygons: 다각형 좌표 리스트(JSON 문자열)
-    - scaler: 다운스케일 배율(2, 3, 4 중 하나)
+    - 이미지에서 지정된 다각형 영역들(ROI)만 추출하여 압축 및 패키징합니다.
+    - `scaler` 값으로 전체 이미지를 downscaling 할 수 있습니다.
+    - `use_imgpresso=True`로 고효율 압축(imgpresso)을 적용할 수 있습니다(선택).
+    - 반환값은 .pkg 확장자의 바이너리 패키지 파일입니다.
+
+    파라미터
+    - image: 업로드할 원본 이미지 파일 (필수)
+    - polygons: ROI 좌표 리스트 (JSON 문자열, 예: [[[x1, y1], [x2, y2], ...], ...])
+    - scaler: 다운스케일 배율 (2, 3, 4 중 선택, 기본값 2)
+    - use_imgpresso: 고효율 압축(imgpresso) 적용 여부 (기본값: False)
+
+    반환
+    - output.pkg: 압축된 결과물 패키지 파일 (application/octet-stream)
     """
-    # [1] 입력값 검증
     polygons_data = parse_polygons(polygons)
     scaler = validate_scaler(scaler)
 
-    # [2] 임시 파일 저장 경로 생성 및 저장
     ensure_temp_dir()
     image_path = get_unique_path(image.filename)
     await save_upload_file(image, image_path)
 
-    # [3] 패키지(.pkg) 파일 생성
-    pkg_path = imgpkg.compress_img_mult_tgs_server(
+    kwargs = dict(
         img_path=image_path,
         output_path=TEMP_DIR,
         scaler=scaler,
-        roi_point_lists=polygons_data
+        roi_point_lists=polygons_data,
+        pkg_filename="output.pkg"
     )
+
+    if use_imgpresso:
+        pkg_path = imgpkg.compress_img_pkg_imgpresso(**kwargs)
+    else:
+        pkg_path = imgpkg.compress_img_mult_tgs_server(**kwargs)
+
     if not pkg_path or not os.path.exists(pkg_path):
         raise HTTPException(status_code=500, detail="패키지 생성 실패")
 
-    # [4] (선택) 원본 업로드 파일 삭제 가능
-    # os.remove(image_path)
-
-    # [5] .pkg 파일 반환
     return FileResponse(pkg_path, filename="output.pkg", media_type="application/octet-stream")
+
 
 
 @app.post("/restore")
