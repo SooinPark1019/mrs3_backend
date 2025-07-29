@@ -17,11 +17,7 @@ app = FastAPI()
 # CORS 설정 추가
 app.add_middleware(
     CORSMiddleware,
-<<<<<<< HEAD
     allow_origins=["http://localhost:3000", "https://www.photoshrink.shop", "https://photoshrink.shop"],
-=======
-    allow_origins=["http://localhost:3000", "https://photoshrink.shop", "https://www.photoshrink.shop"],
->>>>>>> origin
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
