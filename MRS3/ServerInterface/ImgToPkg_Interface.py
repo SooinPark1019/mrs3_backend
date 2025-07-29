@@ -153,3 +153,54 @@ def compress_img_mult_tgs_server(
         os.remove(p)
 
     return pkg_path  # 패키지 파일 경로 반환
+
+def compress_img_pkg_imgpresso(
+    img_path,
+    output_path,
+    scaler,
+    roi_point_lists,
+    pkg_filename='output.pkg',
+    interpolation=cv2.INTER_AREA
+):
+    """
+    imgpresso 방식 압축
+    """
+    # [1] 일반 패키징(ROI 마스킹, 다운스케일, ini, 패키지파일 생성 등)
+    compress_img_mult_tgs_server(
+        img_path=img_path,
+        output_path=output_path,
+        scaler=scaler,
+        roi_point_lists=roi_point_lists,
+        pkg_filename=pkg_filename,
+        interpolation=interpolation
+    )
+
+    # [2] config.ini에서 ROI 개수 읽기
+    config = configparser.ConfigParser()
+    config.read(os.path.join(output_path, f"{config_filename}.ini"))
+    target_num = int(config['DEFAULT']['NUMBER_OF_TARGETS'])
+
+    # [3] imgpresso 압축(예: utils.compress_imgpresso_replace 함수)
+    utils.compress_imgpresso_replace(os.path.join(output_path, f"{downscaled_filename}.png"), output_path)
+    for i in range(target_num):
+        utils.compress_imgpresso_replace(os.path.join(output_path, f"{roi_filename}{i}.png"), output_path)
+
+    pkg_files = [os.path.join(output_path, f"{config_filename}.ini"), os.path.join(output_path, f"{downscaled_filename}.png")]
+    for i in range(target_num):
+        pkg_files.append(os.path.join(output_path, f"{roi_filename}{i}.png"))
+        pkg_files.append(os.path.join(output_path, f"{roi_binary_filename}{i}.png"))
+
+    utils.pack_files(output_file=os.path.join(output_path, pkg_filename), input_files=pkg_files)
+
+    # 용량 출력, 임시파일 삭제
+    filesize_pkg = os.path.getsize(os.path.join(output_path, pkg_filename))
+    print(f'pkg file: {filesize_pkg}')
+
+    for pfile in pkg_files:
+        try:
+            os.unlink(pfile)
+        except Exception as e:
+            print(f"[임시파일 삭제 오류] {pfile} - {e}")
+
+    
+    return os.path.join(output_path, pkg_filename)
