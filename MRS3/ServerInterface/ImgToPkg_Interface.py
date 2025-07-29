@@ -3,6 +3,7 @@ import cv2
 import os
 import configparser
 import struct
+import Utils
 
 # 파일명 상수
 roi_filename = 'roi'
@@ -80,7 +81,8 @@ def compress_img_mult_tgs_server(
     scaler,
     roi_point_lists,      # 프론트에서 받은 [[(x1, y1), ...], ...]
     pkg_filename='output.pkg',
-    interpolation=cv2.INTER_AREA
+    interpolation=cv2.INTER_AREA,
+    delete_temp=True,
 ):
     """
     여러 ROI를 압축해 패키지(.pkg) 파일로 저장합니다.
@@ -148,9 +150,12 @@ def compress_img_mult_tgs_server(
     pkg_path = os.path.join(output_path, pkg_filename)
     pack_files_server(pkg_path, pkg_files)
 
-    # 패키지 외 임시파일 삭제 (필요없다면 이 블록 주석처리)
-    for p in pkg_files:
-        os.remove(p)
+    if delete_temp:
+        for p in pkg_files:
+            try:
+                os.remove(p)
+            except Exception as e:
+                print(f"[임시파일 삭제 오류] {p} - {e}")
 
     return pkg_path  # 패키지 파일 경로 반환
 
@@ -172,7 +177,8 @@ def compress_img_pkg_imgpresso(
         scaler=scaler,
         roi_point_lists=roi_point_lists,
         pkg_filename=pkg_filename,
-        interpolation=interpolation
+        interpolation=interpolation,
+        delete_temp=False,
     )
 
     # [2] config.ini에서 ROI 개수 읽기
@@ -181,20 +187,16 @@ def compress_img_pkg_imgpresso(
     target_num = int(config['DEFAULT']['NUMBER_OF_TARGETS'])
 
     # [3] imgpresso 압축(예: utils.compress_imgpresso_replace 함수)
-    utils.compress_imgpresso_replace(os.path.join(output_path, f"{downscaled_filename}.png"), output_path)
+    Utils.compress_imgpresso_replace(os.path.join(output_path, f"{downscaled_filename}.png"), output_path)
     for i in range(target_num):
-        utils.compress_imgpresso_replace(os.path.join(output_path, f"{roi_filename}{i}.png"), output_path)
+        Utils.compress_imgpresso_replace(os.path.join(output_path, f"{roi_filename}{i}.png"), output_path)
 
     pkg_files = [os.path.join(output_path, f"{config_filename}.ini"), os.path.join(output_path, f"{downscaled_filename}.png")]
     for i in range(target_num):
         pkg_files.append(os.path.join(output_path, f"{roi_filename}{i}.png"))
         pkg_files.append(os.path.join(output_path, f"{roi_binary_filename}{i}.png"))
 
-    utils.pack_files(output_file=os.path.join(output_path, pkg_filename), input_files=pkg_files)
-
-    # 용량 출력, 임시파일 삭제
-    filesize_pkg = os.path.getsize(os.path.join(output_path, pkg_filename))
-    print(f'pkg file: {filesize_pkg}')
+    Utils.pack_files(output_file=os.path.join(output_path, pkg_filename), input_files=pkg_files)
 
     for pfile in pkg_files:
         try:
