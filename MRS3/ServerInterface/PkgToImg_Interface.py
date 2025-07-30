@@ -7,6 +7,7 @@ import Interpolation as inter
 import time
 from collections.abc import Callable
 import gc
+import Utils
 
 # 파일명/상수 정의
 roi_filename = 'roi'
@@ -56,9 +57,6 @@ def _upscale_by_edsr(image_path, scaler):
     if scaler not in [2, 3, 4]:
         print(f"Invalid scaler value: {scaler}. Must be 2, 3 or 4.")
         return None
-    if not cv2.cuda.getCudaEnabledDeviceCount():
-        print("No CUDA-enabled GPU found.")
-        return None
 
     sr = cv2.dnn_superres.DnnSuperResImpl_create()
     try:
@@ -67,8 +65,13 @@ def _upscale_by_edsr(image_path, scaler):
         print(f"Error reading model: {e}")
         return None
 
-    sr.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
-    sr.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
+    # gpu accelaration
+    if(cv2.cuda.getCudaEnabledDeviceCount()):
+        sr.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
+        sr.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
+    else:
+        print('No CUDA-enabled GPU found. Run with CPU.')
+
     sr.setModel('edsr', scaler)
     try:
         result = sr.upsample(img)
@@ -282,3 +285,40 @@ def restore_img_mult_tgs(input_path, mrs3_mode, output_path=""):
         out_file = os.path.join(output_path, f'{restored_filename}.png')
         cv2.imwrite(out_file, restored)
         print(f"복원 이미지 저장 완료: {out_file}")
+
+
+import uuid
+from pathlib import Path
+TEMP_DIR = "temp"
+def get_unique_path(filename: str, suffix: str = "") -> str:
+    """uuid와 원본 파일명, 옵션 suffix로 유니크 경로 생성."""
+    session_id = str(uuid.uuid4())
+    safe_name = Path(filename).name  # 보안: 디렉토리 오염 방지
+    return os.path.join(TEMP_DIR, f"{session_id}_{suffix}{safe_name}")
+
+
+def restore_imgs_in_folder_server(input_path, output_path, mrs3_mode):
+    """
+    :param input_path: pkg 파일이 모여있는 폴더경로
+    :param output_path: 복원한 png 파일을 저장할 폴더경로
+    """
+    # input 이 zip 이면 압축해제한 후에 압축해제 폴더 경로를 input_path 에 넣으면 됨
+
+    for filename in os.listdir(input_path):
+        if filename.lower().endswith('.pkg'):
+            full_path = os.path.join(input_path, filename)
+
+            filename_with_ext = os.path.basename(filename)
+            img_filename_split, _ = os.path.splitext(filename_with_ext)
+            img_filename = f'{img_filename_split}.png'
+
+            unpack_path = get_unique_path(img_filename_split, suffix="unpacked_")
+            Utils.unpack_files(full_path, unpack_path)
+
+            restore_img_mult_tgs(input_path=unpack_path, 
+                                           mrs3_mode=mrs3_mode, 
+                                           output_path=output_path, 
+                                           img_filename=img_filename)
+    return
+
+

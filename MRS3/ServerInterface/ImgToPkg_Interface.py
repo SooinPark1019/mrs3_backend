@@ -4,6 +4,7 @@ import os
 import configparser
 import struct
 import Utils
+from ultralytics import YOLO
 
 # 파일명 상수
 roi_filename = 'roi'
@@ -206,3 +207,47 @@ def compress_img_pkg_imgpresso(
 
     
     return os.path.join(output_path, pkg_filename)
+
+
+model = YOLO('../models/yolov8m-face-lindevs.pt')
+
+
+def compress_mult_img_server(input_path, output_path, manual=True, scaler=4, interpolation=mr.INTER_AREA):
+    """
+    :param input_path: 수동 압축 이미지 모아놓은 폴더 경로
+    :param output_path: pkg 결과 저장 폴더 경로
+    :param manual: 해당 폴더 처리 자동/수동 여부. True 면 수동, False 면 자동.
+    :param scaler: 이미지 shrink scaler
+    :param interpolation: shrink 에 적용할 interpolation manner
+    """
+    for filename in os.listdir(input_path):
+        if filename.lower().endswith('.png'):
+            full_path = os.path.join(input_path, filename)
+            
+            filename_with_ext = os.path.basename(filename)
+            pkg_filename_split, _ = os.path.splitext(filename_with_ext)
+            pkg_filename = f'{pkg_filename_split}.pkg'
+
+            roi_point_lists = []
+            if manual: # 수동 타겟
+                # TODO: 현재 full_path 이미지에 대응하는 roi_point_lists 가져오기 - 아래 코드 지우고, 웹형식에 맞게 수정 필요
+                # roi_point_lists = _select_multiple_polygon_roi(full_path)
+                pass
+            else: # 자동 타겟
+                img = cv2.imread(full_path)
+                results = model(img)
+                
+                for box in results[0].boxes.xyxy:
+                    x1, y1, x2, y2 = map(int, box)
+                    roi_point_lists.append([(x1,y1), (x2,y1), (x2,y2), (x1,y2)])
+            
+            compress_img_mult_tgs_server(img_path=full_path, 
+                                            output_path=output_path, 
+                                            scaler=scaler, 
+                                            pkg_filename=pkg_filename,
+                                            roi_point_lists=roi_point_lists,
+                                            interpolation=interpolation,
+                                            delete_temp=True)
+    return
+
+
