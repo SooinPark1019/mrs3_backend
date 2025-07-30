@@ -14,7 +14,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 import os
 import time
 import struct
-# import 
+import zipfile
 
 def compress_imgpresso(img_path, output_path):
     """
@@ -221,4 +221,28 @@ def unpack_files(input_file: str, output_dir: str):
                 f_out.write(file_data)
 
 
+
+def zip_folder_server(folder_path, zip_filename):
+    """
+    :param folder_path: 폴더 경로
+    :param zip_filename: 저장할 zip 파일명(e.g. compression.zip)
+    """
+    # 지정 폴더 내 모든 파일을 zip 으로 묶어서 저장
+    with zipfile.ZipFile(zip_filename, 'w') as zipf:
+        for filename in os.listdir(folder_path):
+            file_path = os.path.join(folder_path, filename)
+            if os.path.isfile(file_path):  # 파일인지 확인
+                # 압축 내 파일 이름은 파일명만 사용 (전체 경로 아님)
+                zipf.write(file_path, arcname=filename)
+    return
+
+
+def unzip_server(zip_path, extract_folder):
+    """
+    :param zip_path: 압축해제하고자 하는 zip 파일 경로(file.zip)
+    :param extract_folder: 압축해제하여 파일들을 저장할 폴더 경로
+    """
+    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        zip_ref.extractall(extract_folder)  # 모든 파일을 지정한 폴더에 압축 해제
+    return
 
