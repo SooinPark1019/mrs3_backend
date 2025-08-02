@@ -15,6 +15,8 @@ import os
 import time
 import struct
 import zipfile
+import uuid
+from pathlib import Path
 
 def compress_imgpresso(img_path, output_path):
     """
@@ -246,3 +248,10 @@ def unzip_server(zip_path, extract_folder):
         zip_ref.extractall(extract_folder)  # 모든 파일을 지정한 폴더에 압축 해제
     return
 
+TEMP_DIR = "temp"
+
+def get_unique_path(filename: str, suffix: str = "") -> str:
+    """uuid와 원본 파일명, 옵션 suffix로 유니크 경로 생성."""
+    session_id = str(uuid.uuid4())
+    safe_name = Path(filename).name  # 보안: 디렉토리 오염 방지
+    return os.path.join(TEMP_DIR, f"{session_id}_{suffix}{safe_name}")
