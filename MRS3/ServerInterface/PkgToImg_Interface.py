@@ -49,6 +49,7 @@ def _upscale_by_edsr(image_path, scaler):
     """
     EDSR 슈퍼레졸루션으로 업스케일링 (CUDA 필요, 미사용시 None 반환)
     """
+    MODEL_PATH = f'/Users/psi/mrs3/mrs3_backend/MRS3/models/EDSR_x{scaler}.pb'
     t1 = time.time()
     img = cv2.imread(image_path)
     if img is None:
@@ -59,8 +60,9 @@ def _upscale_by_edsr(image_path, scaler):
         return None
 
     sr = cv2.dnn_superres.DnnSuperResImpl_create()
+
     try:
-        sr.readModel(f'models/EDSR_x{scaler}.pb')
+        sr.readModel(MODEL_PATH)
     except Exception as e:
         print(f"Error reading model: {e}")
         return None
@@ -314,8 +316,7 @@ def restore_imgs_in_folder_server(input_path, output_path, mrs3_mode):
 
             restore_img_mult_tgs_server(input_path=unpack_path, 
                                            mrs3_mode=mrs3_mode, 
-                                           output_path=output_path, 
-                                           img_filename=img_filename)
+                                           output_path=output_path,)
 
     return
 

@@ -13,6 +13,8 @@ roi_binary_filename = 'bin'
 downscaled_filename = 'downscaled'
 config_filename = 'config'
 
+MODEL_PATH = '/Users/psi/mrs3/mrs3_backend/MRS3/models/yolov8m-face-lindevs.pt'
+
 def pack_files_server(output_file: str, input_files: list):
     """
     여러 파일을 하나의 사용자 정의 패키지(.pkg)로 묶습니다.
@@ -210,7 +212,7 @@ def compress_img_pkg_imgpresso(
     return os.path.join(output_path, pkg_filename)
 
 
-model = YOLO('../models/yolov8m-face-lindevs.pt')
+model = YOLO(MODEL_PATH)
 
 
 def compress_mult_img_server(

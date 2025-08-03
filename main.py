@@ -6,6 +6,7 @@ import os
 import uuid
 from pathlib import Path
 import shutil
+import cv2
 
 from validators import parse_polygons, validate_scaler
 
