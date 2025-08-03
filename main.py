@@ -113,7 +113,7 @@ async def restore_image(
 
     # [3] .pkg 언팩 및 복원 이미지 생성
     pkgimg.unpack_files(pkg_path, unpacked_dir)
-    pkgimg.restore_img_mult_tgs(
+    pkgimg.restore_img_mult_tgs_server(
         input_path=unpacked_dir,
         mrs3_mode=mrs3_mode,
         output_path=TEMP_DIR

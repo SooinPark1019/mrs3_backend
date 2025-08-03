@@ -5,6 +5,7 @@ import configparser
 import struct
 import Utils
 from ultralytics import YOLO
+from dataclasses import dataclass
 
 # 파일명 상수
 roi_filename = 'roi'
@@ -86,7 +87,7 @@ def compress_img_mult_tgs_server(
     delete_temp=True,
 ):
     """
-    여러 ROI를 압축해 패키지(.pkg) 파일로 저장합니다.
+    여러 ROI를 압축해 패키지(.pkg) 파일로 저장합니다. 단일 이미지 처리.
 
     Args:
         img_path (str): 원본 이미지 경로
@@ -212,14 +213,26 @@ def compress_img_pkg_imgpresso(
 model = YOLO('../models/yolov8m-face-lindevs.pt')
 
 
-def compress_mult_img_server(input_path, output_path, manual=True, scaler=4, interpolation=mr.INTER_AREA):
+def compress_mult_img_server(
+        input_path: str, 
+        output_path: str, 
+        manual=True, 
+        scaler=4, 
+        interpolation=cv2.INTER_AREA
+        ):
     """
-    :param input_path: 수동 압축 이미지 모아놓은 폴더 경로
-    :param output_path: pkg 결과 저장 폴더 경로
+    :param input_path: 수동 압축 대상 이미지 모아놓은 폴더 경로
+    :param output_path: pkg 결과 저장 폴더 또는 zip 경로. 확장자가 zip 이면 압축까지 수행
     :param manual: 해당 폴더 처리 자동/수동 여부. True 면 수동, False 면 자동.
     :param scaler: 이미지 shrink scaler
     :param interpolation: shrink 에 적용할 interpolation manner
     """
+
+    target_path = output_path
+    fn, ext = os.path.splitext(output_path)
+    if ext.lower() == '.zip':
+        target_path = Utils.get_unique_path(fn, suffix="pkgs-folder_")
+
     for filename in os.listdir(input_path):
         if filename.lower().endswith('.png'):
             full_path = os.path.join(input_path, filename)
@@ -242,12 +255,56 @@ def compress_mult_img_server(input_path, output_path, manual=True, scaler=4, int
                     roi_point_lists.append([(x1,y1), (x2,y1), (x2,y2), (x1,y2)])
             
             compress_img_mult_tgs_server(img_path=full_path, 
-                                            output_path=output_path, 
+                                            output_path=target_path, 
                                             scaler=scaler, 
                                             pkg_filename=pkg_filename,
                                             roi_point_lists=roi_point_lists,
                                             interpolation=interpolation,
                                             delete_temp=True)
+    if target_path != output_path: # output_path 가 zip 이면 zip 으로 압축해서 저장
+        Utils.zip_folder_server(target_path, output_path)
     return
 
 
+@dataclass
+class CompressInputInfo:
+    path: str
+    manual: bool = True
+    scaler: int = 4
+    interpolation: int = cv2.INTER_AREA
+
+
+def compress_mult_imgs_in_mult_folders_server(
+        input_infos: list[CompressInputInfo], 
+        output_path: str
+        ) -> None:
+    """
+    다수 폴더 내 이미지 한 번에 처리
+    e.g. 자동 타겟 이미지 모아놓은 폴더 및 수동타겟 모은 폴더 한 번에 묶어서 처리
+
+    아래는 테스트 코드
+    
+    info1 = CompressInputInfo(path='1-input-compress-auto', manual=False)
+    info2 = CompressInputInfo(path='1-input-compress-manual', manual=True)
+    infos = [info1, info2]
+
+    compress_mult_imgs_in_mult_folders_server(infos, output_path='2-output-compress-zip/test.zip')
+    compress_mult_imgs_in_mult_folders_server(infos, output_path='2-output-compress-pkgs')
+    """
+
+    target_path = output_path
+    fn, ext = os.path.splitext(output_path)
+    if ext.lower() == '.zip':
+        target_path = Utils.get_unique_path(fn, suffix="pkgs-folder_")
+    
+    for info in input_infos:
+        compress_mult_img_server(input_path=info.path,
+                                 output_path=target_path,
+                                 manual=info.manual,
+                                 scaler=info.scaler,
+                                 interpolation=info.interpolation
+                                 )
+    
+    if target_path != output_path: # output_path 가 zip 이면 zip 으로 압축해서 저장
+        Utils.zip_folder_server(target_path, output_path)
+    return

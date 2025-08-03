@@ -221,7 +221,7 @@ def _blend_images_with_contour_distance(A, B, contour, blend=BLEND_SINUSOIDAL):
     blended = np.clip(blended, 0, 255).astype(np.uint8)
     return blended
 
-def restore_img_mult_tgs(input_path, mrs3_mode, output_path=""):
+def restore_img_mult_tgs_server(input_path, mrs3_mode, output_path=""):
     """
     압축 해제된 이미지/마스크/메타데이터 폴더에서 복원 이미지를 생성합니다.
 
@@ -287,38 +287,36 @@ def restore_img_mult_tgs(input_path, mrs3_mode, output_path=""):
         print(f"복원 이미지 저장 완료: {out_file}")
 
 
-import uuid
-from pathlib import Path
-TEMP_DIR = "temp"
-def get_unique_path(filename: str, suffix: str = "") -> str:
-    """uuid와 원본 파일명, 옵션 suffix로 유니크 경로 생성."""
-    session_id = str(uuid.uuid4())
-    safe_name = Path(filename).name  # 보안: 디렉토리 오염 방지
-    return os.path.join(TEMP_DIR, f"{session_id}_{suffix}{safe_name}")
-
-
 def restore_imgs_in_folder_server(input_path, output_path, mrs3_mode):
     """
-    :param input_path: pkg 파일이 모여있는 폴더경로
+    :param input_path: pkg 파일이 모여있는 폴더 또는 zip 경로. 확장자가 zip 이면 자동으로 압축해제해서 처리.
     :param output_path: 복원한 png 파일을 저장할 폴더경로
     """
-    # input 이 zip 이면 압축해제한 후에 압축해제 폴더 경로를 input_path 에 넣으면 됨
+    
+    target_path = input_path
 
-    for filename in os.listdir(input_path):
+    fn, ext = os.path.splitext(input_path)
+    if ext.lower() == '.zip':
+        unzip_path = Utils.get_unique_path(fn, suffix="unzip_")
+        Utils.unzip_server(input_path, unzip_path)
+        target_path = unzip_path
+
+    for filename in os.listdir(target_path):
         if filename.lower().endswith('.pkg'):
-            full_path = os.path.join(input_path, filename)
+            full_path = os.path.join(target_path, filename)
 
             filename_with_ext = os.path.basename(filename)
             img_filename_split, _ = os.path.splitext(filename_with_ext)
             img_filename = f'{img_filename_split}.png'
 
-            unpack_path = get_unique_path(img_filename_split, suffix="unpacked_")
+            unpack_path = Utils.get_unique_path(img_filename_split, suffix="unpacked_")
             Utils.unpack_files(full_path, unpack_path)
 
-            restore_img_mult_tgs(input_path=unpack_path, 
+            restore_img_mult_tgs_server(input_path=unpack_path, 
                                            mrs3_mode=mrs3_mode, 
                                            output_path=output_path, 
                                            img_filename=img_filename)
+
     return
 
 
