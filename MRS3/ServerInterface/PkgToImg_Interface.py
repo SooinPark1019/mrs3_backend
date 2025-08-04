@@ -221,7 +221,7 @@ def _blend_images_with_contour_distance(A, B, contour, blend=BLEND_SINUSOIDAL):
     blended = np.clip(blended, 0, 255).astype(np.uint8)
     return blended
 
-def restore_img_mult_tgs_server(input_path, mrs3_mode, output_path=""):
+def restore_img_mult_tgs_server(input_path, mrs3_mode, output_path="", img_filename="restored.png"):
     """
     압축 해제된 이미지/마스크/메타데이터 폴더에서 복원 이미지를 생성합니다.
 
@@ -229,6 +229,7 @@ def restore_img_mult_tgs_server(input_path, mrs3_mode, output_path=""):
         input_path (str): 압축 해제 폴더 경로
         mrs3_mode (int): 업스케일 모드 (cv2.INTER_CUBIC 등, EDSR은 -1)
         output_path (str): 복원 이미지 저장 폴더 (미지정시 현재 폴더)
+        img_filename (str): 복원 이미지 파일명(e.g. restored_image.png)
     Returns:
         None (결과 이미지는 파일로 저장)
     """
@@ -276,15 +277,82 @@ def restore_img_mult_tgs_server(input_path, mrs3_mode, output_path=""):
         )
 
     # 결과 저장
+
     if output_path == "":
-        cv2.imwrite(f'{restored_filename}.png', restored)
+        cv2.imwrite(img_filename, restored)
         print(f"복원 이미지 저장 완료: {restored_filename}.png")
     else:
         if not os.path.exists(output_path):
             os.makedirs(output_path)
-        out_file = os.path.join(output_path, f'{restored_filename}.png')
+        out_file = os.path.join(output_path, img_filename)
         cv2.imwrite(out_file, restored)
         print(f"복원 이미지 저장 완료: {out_file}")
+
+
+# def restore_img_mult_tgs_server(input_path, mrs3_mode, output_path=""):
+#     """
+#     압축 해제된 이미지/마스크/메타데이터 폴더에서 복원 이미지를 생성합니다.
+
+#     Args:
+#         input_path (str): 압축 해제 폴더 경로
+#         mrs3_mode (int): 업스케일 모드 (cv2.INTER_CUBIC 등, EDSR은 -1)
+#         output_path (str): 복원 이미지 저장 폴더 (미지정시 현재 폴더)
+#     Returns:
+#         None (결과 이미지는 파일로 저장)
+#     """
+#     if not os.path.exists(f'{input_path}/{downscaled_filename}.png'):
+#         print(f"Error loading image: {input_path}/{downscaled_filename}.png")
+#         return
+#     if not os.path.exists(f'{input_path}/{config_filename}.ini'):
+#         print(f'Error loading config: {input_path}/{config_filename}.ini')
+#         return
+#     if not os.path.exists(f'{input_path}/{roi_filename}0.png'):
+#         print(f'Error loading image: {input_path}/{roi_filename}0.png')
+#         return
+
+#     config = configparser.ConfigParser()
+#     config.read(f'{input_path}/{config_filename}.ini')
+#     target_num = int(config['DEFAULT']['NUMBER_OF_TARGETS'])
+#     scaler = int(config['DEFAULT']['SCALER'])
+
+#     if mrs3_mode == -1:
+#         upscaled = _upscale_by_edsr(f'{input_path}/{downscaled_filename}.png', scaler=scaler)
+#     else:
+#         upscaled = _upscale_by_resize(f'{input_path}/{downscaled_filename}.png', scaler=scaler, interpolation=mrs3_mode)
+#     restored = upscaled.copy()
+
+#     for i in range(target_num):
+#         y_from, y_to, x_from, x_to = int(config[f'{i}']['Y_FROM']), int(config[f'{i}']['Y_TO']), int(config[f'{i}']['X_FROM']), int(config[f'{i}']['X_TO'])
+#         roi = cv2.imread(f'{input_path}/{roi_filename}{i}.png')
+#         roi_mask = cv2.imread(f'{input_path}/{roi_binary_filename}{i}.png')
+
+#         bool_roi_mask_3ch = roi_mask > 0
+#         bool_roi_mask_1ch = np.all(roi_mask != [0, 0, 0], axis=2)
+#         bin_roi_mask = bool_roi_mask_1ch.astype(np.uint8) * 255
+
+#         combined_roi = np.where(bool_roi_mask_3ch, roi, upscaled[y_from:y_to, x_from:x_to])
+#         restored[y_from:y_to, x_from:x_to] = combined_roi
+
+#         contours, _ = cv2.findContours(bin_roi_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+#         if not contours:
+#             continue
+#         restored[y_from:y_to, x_from:x_to] = _blend_images_with_contour_distance(
+#             upscaled[y_from:y_to, x_from:x_to],
+#             restored[y_from:y_to, x_from:x_to],
+#             contours[0],
+#             blend=BLEND_SINUSOIDAL
+#         )
+
+#     # 결과 저장
+#     if output_path == "":
+#         cv2.imwrite(f'{restored_filename}.png', restored)
+#         print(f"복원 이미지 저장 완료: {restored_filename}.png")
+#     else:
+#         if not os.path.exists(output_path):
+#             os.makedirs(output_path)
+#         out_file = os.path.join(output_path, f'{restored_filename}.png')
+#         cv2.imwrite(out_file, restored)
+#         print(f"복원 이미지 저장 완료: {out_file}")
 
 
 def restore_imgs_in_folder_server(input_path, output_path, mrs3_mode):
