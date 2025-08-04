@@ -223,7 +223,7 @@ def _blend_images_with_contour_distance(A, B, contour, blend=BLEND_SINUSOIDAL):
     blended = np.clip(blended, 0, 255).astype(np.uint8)
     return blended
 
-def restore_img_mult_tgs_server(input_path, mrs3_mode, output_path=""):
+def restore_img_mult_tgs_server(input_path, mrs3_mode, output_path="", output_name=None):
     """
     압축 해제된 이미지/마스크/메타데이터 폴더에서 복원 이미지를 생성합니다.
 
@@ -279,12 +279,13 @@ def restore_img_mult_tgs_server(input_path, mrs3_mode, output_path=""):
 
     # 결과 저장
     if output_path == "":
-        cv2.imwrite(f'{restored_filename}.png', restored)
-        print(f"복원 이미지 저장 완료: {restored_filename}.png")
+        out_file = f'{output_name or restored_filename}.png'
+        cv2.imwrite(out_file, restored)
+        print(f"복원 이미지 저장 완료: {out_file}")
     else:
         if not os.path.exists(output_path):
             os.makedirs(output_path)
-        out_file = os.path.join(output_path, f'{restored_filename}.png')
+        out_file = os.path.join(output_path, f'{output_name or restored_filename}.png')
         cv2.imwrite(out_file, restored)
         print(f"복원 이미지 저장 완료: {out_file}")
 
@@ -314,9 +315,13 @@ def restore_imgs_in_folder_server(input_path, output_path, mrs3_mode):
             unpack_path = Utils.get_unique_path(img_filename_split, suffix="unpacked_")
             Utils.unpack_files(full_path, unpack_path)
 
-            restore_img_mult_tgs_server(input_path=unpack_path, 
-                                           mrs3_mode=mrs3_mode, 
-                                           output_path=output_path,)
+            restore_img_mult_tgs_server(
+                input_path=unpack_path, 
+                mrs3_mode=mrs3_mode, 
+                output_path=output_path,
+                output_name=img_filename
+            )
+            print("현재 restored_dir의 파일:", os.listdir(output_path))
 
     return
 

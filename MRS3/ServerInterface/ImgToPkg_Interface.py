@@ -154,12 +154,12 @@ def compress_img_mult_tgs_server(
     pkg_path = os.path.join(output_path, pkg_filename)
     pack_files_server(pkg_path, pkg_files)
 
-    if delete_temp:
-        for p in pkg_files:
-            try:
-                os.remove(p)
-            except Exception as e:
-                print(f"[임시파일 삭제 오류] {p} - {e}")
+    # if delete_temp:
+    #     for p in pkg_files:
+    #         try:
+    #             os.remove(p)
+    #         except Exception as e:
+    #             print(f"[임시파일 삭제 오류] {p} - {e}")
 
     return pkg_path  # 패키지 파일 경로 반환
 
