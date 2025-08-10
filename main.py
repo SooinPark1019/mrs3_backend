@@ -132,8 +132,7 @@ async def restore_image(
 async def auto_batch_compress(
     images: list[UploadFile] = File(...),
     scaler: int = Form(2),
-    manual: bool = Form(True),
-    background_tasks: BackgroundTasks = None
+    manual: bool = Form(False),
 ):
     """
     여러 이미지를 받아 임시 폴더에 저장 → compress_mult_img_server로 처리 → zip 반환
@@ -164,16 +163,12 @@ async def auto_batch_compress(
     if not os.path.exists(output_zip_path):
         raise HTTPException(status_code=500, detail="압축 zip 생성 실패")
 
-    background_tasks.add_task(shutil.rmtree, temp_dir, ignore_errors=True)
-    background_tasks.add_task(os.remove, output_zip_path)
-
     return FileResponse(output_zip_path, filename="pkgs.zip", media_type="application/zip")
 
 @app.post("/batch-restore")
 async def batch_restore(
     pkgs_zip: UploadFile = File(...),
     mrs3_mode: int = Form(-1),
-    background_tasks: BackgroundTasks = None
 ):
     """
     여러 개의 .pkg 파일이 들어있는 zip 파일을 업로드 받아
@@ -213,8 +208,5 @@ async def batch_restore(
     # 5. 반환
     if not os.path.exists(restored_zip_path):
         raise HTTPException(status_code=500, detail="복원 zip 생성 실패")
-
-    background_tasks.add_task(shutil.rmtree, temp_dir, ignore_errors=True)
-    background_tasks.add_task(os.remove, restored_zip_path)
 
     return FileResponse(restored_zip_path, filename="restored_imgs.zip", media_type="application/zip")

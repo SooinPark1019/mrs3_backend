@@ -53,7 +53,7 @@ def _upscale_by_edsr(image_path, scaler):
     t1 = time.time()
     img = cv2.imread(image_path)
     if img is None:
-        print(f"Error loading image: {image_path}")
+        print(f"Error loading image in upscale by edsr: {image_path}")
         return None
     if scaler not in [2, 3, 4]:
         print(f"Invalid scaler value: {scaler}. Must be 2, 3 or 4.")
@@ -90,7 +90,7 @@ def _upscale_by_resize(image_path, scaler, interpolation=cv2.INTER_CUBIC):
     """
     img = cv2.imread(image_path)
     if img is None:
-        print(f"Error loading image: {image_path}")
+        print(f"Error loading image in upscale by resize: {image_path}")
         return None
     h, w = img.shape[0] * scaler, img.shape[1] * scaler
     result = cv2.resize(img, (w, h), interpolation=interpolation)
@@ -225,70 +225,113 @@ def _blend_images_with_contour_distance(A, B, contour, blend=BLEND_SINUSOIDAL):
 
 def restore_img_mult_tgs_server(input_path, mrs3_mode, output_path="", img_filename="restored.png"):
     """
-    압축 해제된 이미지/마스크/메타데이터 폴더에서 복원 이미지를 생성합니다.
-
-    Args:
-        input_path (str): 압축 해제 폴더 경로
-        mrs3_mode (int): 업스케일 모드 (cv2.INTER_CUBIC 등, EDSR은 -1)
-        output_path (str): 복원 이미지 저장 폴더 (미지정시 현재 폴더)
-        img_filename (str): 복원 이미지 파일명(e.g. restored_image.png)
-    Returns:
-        None (결과 이미지는 파일로 저장)
+    ROI가 0개여도(=감지 실패) downscaled만 업스케일하여 그대로 복원 파일을 저장.
+    ROI가 일부만 존재해도 해당 ROI만 적용하고 나머지는 업스케일 원본을 그대로 둠.
     """
-    if not os.path.exists(f'{input_path}/{downscaled_filename}.png'):
-        print(f"Error loading image: {input_path}/{downscaled_filename}.png")
+    # 1) 필수 파일 체크
+    down_path  = os.path.join(input_path, f"{downscaled_filename}.png")
+    conf_path  = os.path.join(input_path, f"{config_filename}.ini")
+
+    if not os.path.exists(down_path):
+        print(f"[restore] missing downscaled: {down_path}")
         return
-    if not os.path.exists(f'{input_path}/{config_filename}.ini'):
-        print(f'Error loading config: {input_path}/{config_filename}.ini')
-        return
-    if not os.path.exists(f'{input_path}/{roi_filename}0.png'):
-        print(f'Error loading image: {input_path}/{roi_filename}0.png')
+    if not os.path.exists(conf_path):
+        print(f"[restore] missing config: {conf_path}")
         return
 
+    # 2) 설정 로드
     config = configparser.ConfigParser()
-    config.read(f'{input_path}/{config_filename}.ini')
-    target_num = int(config['DEFAULT']['NUMBER_OF_TARGETS'])
-    scaler = int(config['DEFAULT']['SCALER'])
+    config.read(conf_path)
+    try:
+        target_num = int(config["DEFAULT"].get("NUMBER_OF_TARGETS", "0"))
+    except Exception:
+        target_num = 0
+    try:
+        scaler = int(config["DEFAULT"].get("SCALER", "2"))
+    except Exception:
+        scaler = 2
 
+    # 3) 업스케일 (EDSR 실패 시 안전한 리사이즈 폴백)
     if mrs3_mode == -1:
-        upscaled = _upscale_by_edsr(f'{input_path}/{downscaled_filename}.png', scaler=scaler)
+        upscaled = _upscale_by_edsr(down_path, scaler=scaler)
+        if upscaled is None:
+            upscaled = _upscale_by_resize(down_path, scaler=scaler, interpolation=cv2.INTER_CUBIC)
     else:
-        upscaled = _upscale_by_resize(f'{input_path}/{downscaled_filename}.png', scaler=scaler, interpolation=mrs3_mode)
+        upscaled = _upscale_by_resize(down_path, scaler=scaler, interpolation=mrs3_mode)
+
     restored = upscaled.copy()
 
+    # 4) ROI가 0개면 바로 저장 후 종료
+    if target_num == 0:
+        if output_path == "":
+            cv2.imwrite(img_filename, restored)
+            print(f"[restore] saved(no ROI): {img_filename}")
+        else:
+            os.makedirs(output_path, exist_ok=True)
+            out_file = os.path.join(output_path, img_filename)
+            cv2.imwrite(out_file, restored)
+            print(f"[restore] saved(no ROI): {out_file}")
+        return
+
+    # 5) ROI가 있으면 각각 적용 (없거나 깨진 ROI는 스킵)
     for i in range(target_num):
-        y_from, y_to, x_from, x_to = int(config[f'{i}']['Y_FROM']), int(config[f'{i}']['Y_TO']), int(config[f'{i}']['X_FROM']), int(config[f'{i}']['X_TO'])
-        roi = cv2.imread(f'{input_path}/{roi_filename}{i}.png')
-        roi_mask = cv2.imread(f'{input_path}/{roi_binary_filename}{i}.png')
+        # 좌표
+        y_from = int(config[str(i)]['Y_FROM']); y_to = int(config[str(i)]['Y_TO'])
+        x_from = int(config[str(i)]['X_FROM']); x_to = int(config[str(i)]['X_TO'])
 
+        # 파일 경로
+        roi_path = os.path.join(input_path, f"{roi_filename}{i}.png")
+        msk_path = os.path.join(input_path, f"{roi_binary_filename}{i}.png")
+
+        if not (os.path.exists(roi_path) and os.path.exists(msk_path)):
+            print(f"[restore] ROI {i} missing files -> skip")
+            continue
+
+        roi = cv2.imread(roi_path)
+        roi_mask = cv2.imread(msk_path)
+        if roi is None or roi_mask is None:
+            print(f"[restore] ROI {i} imread failed -> skip")
+            continue
+
+        # 경계/크기 보정
+        h_slice = y_to - y_from
+        w_slice = x_to - x_from
+        if h_slice <= 0 or w_slice <= 0:
+            print(f"[restore] ROI {i} invalid rect -> skip")
+            continue
+
+        roi = roi[:h_slice, :w_slice]
+        roi_mask = roi_mask[:h_slice, :w_slice]
+
+        # 합성
         bool_roi_mask_3ch = roi_mask > 0
-        bool_roi_mask_1ch = np.all(roi_mask != [0, 0, 0], axis=2)
-        bin_roi_mask = bool_roi_mask_1ch.astype(np.uint8) * 255
-
         combined_roi = np.where(bool_roi_mask_3ch, roi, upscaled[y_from:y_to, x_from:x_to])
         restored[y_from:y_to, x_from:x_to] = combined_roi
 
+        # 경계 블렌딩(컨투어 없으면 스킵)
+        if roi_mask.ndim == 3:
+            bin_roi_mask = (np.all(roi_mask != [0, 0, 0], axis=2)).astype(np.uint8) * 255
+        else:
+            bin_roi_mask = (roi_mask > 0).astype(np.uint8) * 255
+
         contours, _ = cv2.findContours(bin_roi_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if not contours:
-            continue
-        restored[y_from:y_to, x_from:x_to] = _blend_images_with_contour_distance(
-            upscaled[y_from:y_to, x_from:x_to],
-            restored[y_from:y_to, x_from:x_to],
-            contours[0],
-            blend=BLEND_SINUSOIDAL
-        )
+        if contours:
+            restored[y_from:y_to, x_from:x_to] = _blend_images_with_contour_distance(
+                upscaled[y_from:y_to, x_from:x_to],
+                restored[y_from:y_to, x_from:x_to],
+                contours[0],
+                blend=BLEND_SINUSOIDAL
+            )
 
-    # 결과 저장
-
+    # 6) 저장
     if output_path == "":
         cv2.imwrite(img_filename, restored)
-        print(f"복원 이미지 저장 완료: {restored_filename}.png")
+        print(f"[restore] saved: {img_filename}")
     else:
-        if not os.path.exists(output_path):
-            os.makedirs(output_path)
+        os.makedirs(output_path, exist_ok=True)
         out_file = os.path.join(output_path, img_filename)
         cv2.imwrite(out_file, restored)
-        print(f"복원 이미지 저장 완료: {out_file}")
+        print(f"[restore] saved: {out_file}")
 
 
 # def restore_img_mult_tgs_server(input_path, mrs3_mode, output_path=""):
@@ -382,12 +425,10 @@ def restore_imgs_in_folder_server(input_path, output_path, mrs3_mode):
             unpack_path = Utils.get_unique_path(img_filename_split, suffix="unpacked_")
             Utils.unpack_files(full_path, unpack_path)
 
-            restore_img_mult_tgs_server(
-                input_path=unpack_path, 
-                mrs3_mode=mrs3_mode, 
-                output_path=output_path,
-                output_name=img_filename
-            )
+            restore_img_mult_tgs_server(input_path=unpack_path, 
+                                           mrs3_mode=mrs3_mode, 
+                                           output_path=output_path, 
+                                           img_filename=img_filename)
             print("현재 restored_dir의 파일:", os.listdir(output_path))
 
     return
