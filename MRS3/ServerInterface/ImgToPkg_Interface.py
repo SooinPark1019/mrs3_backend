@@ -19,7 +19,7 @@ def _iter_image_files(input_path: str):
         if filename.lower().endswith(exts):
             yield filename
 
-MODEL_PATH = '/Users/psi/mrs3/mrs3_backend/MRS3/models/yolov8m-face-lindevs.pt'
+MODEL_PATH = 'MRS3/models/yolov8m-face-lindevs.pt'
 
 def pack_files_server(output_file: str, input_files: list):
     """

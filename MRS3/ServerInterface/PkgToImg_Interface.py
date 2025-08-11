@@ -49,7 +49,7 @@ def _upscale_by_edsr(image_path, scaler):
     """
     EDSR 슈퍼레졸루션으로 업스케일링 (CUDA 필요, 미사용시 None 반환)
     """
-    MODEL_PATH = f'/Users/psi/mrs3/mrs3_backend/MRS3/models/EDSR_x{scaler}.pb'
+    MODEL_PATH = f'MRS3/models/EDSR_x{scaler}.pb'
     t1 = time.time()
     img = cv2.imread(image_path)
     if img is None:
