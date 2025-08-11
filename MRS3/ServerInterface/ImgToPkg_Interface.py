@@ -13,6 +13,14 @@ roi_binary_filename = 'bin'
 downscaled_filename = 'downscaled'
 config_filename = 'config'
 
+def _iter_image_files(input_path: str):
+    exts = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff")
+    for filename in os.listdir(input_path):
+        if filename.lower().endswith(exts):
+            yield filename
+
+MODEL_PATH = '/Users/psi/mrs3/mrs3_backend/MRS3/models/yolov8m-face-lindevs.pt'
+
 def pack_files_server(output_file: str, input_files: list):
     """
     여러 파일을 하나의 사용자 정의 패키지(.pkg)로 묶습니다.
@@ -210,7 +218,7 @@ def compress_img_pkg_imgpresso(
     return os.path.join(output_path, pkg_filename)
 
 
-model = YOLO('../models/yolov8m-face-lindevs.pt')
+model = YOLO(MODEL_PATH)
 
 
 def compress_mult_img_server(
@@ -232,35 +240,39 @@ def compress_mult_img_server(
     fn, ext = os.path.splitext(output_path)
     if ext.lower() == '.zip':
         target_path = Utils.get_unique_path(fn, suffix="pkgs-folder_")
+        os.makedirs(target_path, exist_ok=True)
 
-    for filename in os.listdir(input_path):
-        if filename.lower().endswith('.png'):
-            full_path = os.path.join(input_path, filename)
-            
-            filename_with_ext = os.path.basename(filename)
-            pkg_filename_split, _ = os.path.splitext(filename_with_ext)
-            pkg_filename = f'{pkg_filename_split}.pkg'
+    print(target_path)
 
-            roi_point_lists = []
-            if manual: # 수동 타겟
-                # TODO: 현재 full_path 이미지에 대응하는 roi_point_lists 가져오기 - 아래 코드 지우고, 웹형식에 맞게 수정 필요
-                # roi_point_lists = _select_multiple_polygon_roi(full_path)
-                pass
-            else: # 자동 타겟
-                img = cv2.imread(full_path)
-                results = model(img)
-                
-                for box in results[0].boxes.xyxy:
-                    x1, y1, x2, y2 = map(int, box)
-                    roi_point_lists.append([(x1,y1), (x2,y1), (x2,y2), (x1,y2)])
+    for filename in _iter_image_files(input_path):
+        full_path = os.path.join(input_path, filename)
+        
+        filename_with_ext = os.path.basename(filename)
+        pkg_filename_split, _ = os.path.splitext(filename_with_ext)
+        pkg_filename = f'{pkg_filename_split}.pkg'
+
+        roi_point_lists = []
+        if manual: # 수동 타겟
+            # TODO: 현재 full_path 이미지에 대응하는 roi_point_lists 가져오기 - 아래 코드 지우고, 웹형식에 맞게 수정 필요
+            # roi_point_lists = _select_multiple_polygon_roi(full_path)
+            pass
+        else: # 자동 타겟
+            img = cv2.imread(full_path)
+            results = model(img)
             
-            compress_img_mult_tgs_server(img_path=full_path, 
-                                            output_path=target_path, 
-                                            scaler=scaler, 
-                                            pkg_filename=pkg_filename,
-                                            roi_point_lists=roi_point_lists,
-                                            interpolation=interpolation,
-                                            delete_temp=True)
+            for box in results[0].boxes.xyxy:
+                x1, y1, x2, y2 = map(int, box)
+                roi_point_lists.append([(x1,y1), (x2,y1), (x2,y2), (x1,y2)])
+            
+            print(f"roi_lists: {roi_point_lists}")
+        
+        compress_img_mult_tgs_server(img_path=full_path, 
+                                        output_path=target_path, 
+                                        scaler=scaler, 
+                                        pkg_filename=pkg_filename,
+                                        roi_point_lists=roi_point_lists,
+                                        interpolation=interpolation,
+                                        delete_temp=True)
     if target_path != output_path: # output_path 가 zip 이면 zip 으로 압축해서 저장
         Utils.zip_folder_server(target_path, output_path)
     return

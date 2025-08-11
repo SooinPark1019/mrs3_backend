@@ -1,9 +1,12 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import BackgroundTasks
 import os
 import uuid
 from pathlib import Path
+import shutil
+import cv2
 
 from validators import parse_polygons, validate_scaler
 
@@ -124,3 +127,86 @@ async def restore_image(
 
     # [4] 복원 이미지 반환
     return FileResponse(restored_image_path, filename="restored.png", media_type="image/png")
+
+@app.post("/auto-batch-compress")
+async def auto_batch_compress(
+    images: list[UploadFile] = File(...),
+    scaler: int = Form(2),
+    manual: bool = Form(False),
+):
+    """
+    여러 이미지를 받아 임시 폴더에 저장 → compress_mult_img_server로 처리 → zip 반환
+    manual: True(수동, ROI별도입력), False(자동: YOLO 등)
+    """
+    ensure_temp_dir()
+    session_id = str(uuid.uuid4())
+    temp_dir = os.path.join(TEMP_DIR, f"session_{session_id}")
+    os.makedirs(temp_dir, exist_ok=True)
+    output_zip_path = os.path.join(TEMP_DIR, f"pkgs_{session_id}.zip")
+
+    for image in images:
+        unique_name = f"{uuid.uuid4().hex}_{Path(image.filename).name}"
+        image_path = os.path.join(temp_dir, unique_name)
+        with open(image_path, "wb") as f:
+            f.write(await image.read())
+
+    interpolation = cv2.INTER_AREA
+
+    imgpkg.compress_mult_img_server(
+        input_path=temp_dir,
+        output_path=output_zip_path,
+        manual=manual,
+        scaler=scaler,
+        interpolation=interpolation
+    )
+
+    if not os.path.exists(output_zip_path):
+        raise HTTPException(status_code=500, detail="압축 zip 생성 실패")
+
+    return FileResponse(output_zip_path, filename="pkgs.zip", media_type="application/zip")
+
+@app.post("/batch-restore")
+async def batch_restore(
+    pkgs_zip: UploadFile = File(...),
+    mrs3_mode: int = Form(-1),
+):
+    """
+    여러 개의 .pkg 파일이 들어있는 zip 파일을 업로드 받아
+    모든 패키지를 복원(png)하여 zip으로 반환하는 API.
+    - pkgs_zip: zip 파일(.pkg들이 들어있음)
+    - mrs3_mode: 업스케일 복원 옵션
+    """
+    ensure_temp_dir()
+    session_id = str(uuid.uuid4())
+    temp_dir = os.path.join(TEMP_DIR, f"restore_session_{session_id}")
+    os.makedirs(temp_dir, exist_ok=True)
+
+    # 1. zip 저장 및 압축 해제
+    zip_path = os.path.join(temp_dir, "input_pkgs.zip")
+    with open(zip_path, "wb") as f:
+        f.write(await pkgs_zip.read())
+    pkgs_dir = os.path.join(temp_dir, "pkgs_unzipped")
+    os.makedirs(pkgs_dir, exist_ok=True)
+    shutil.unpack_archive(zip_path, pkgs_dir)  # zip 해제
+
+    # 2. 복원 이미지 저장 폴더 준비
+    restored_dir = os.path.join(temp_dir, "restored_pngs")
+    os.makedirs(restored_dir, exist_ok=True)
+
+    # 3. pkgimg.restore_imgs_in_folder_server 호출
+    # (input_path: pkg 폴더, output_path: 복원폴더, mrs3_mode)
+    pkgimg.restore_imgs_in_folder_server(
+        input_path=pkgs_dir,
+        output_path=restored_dir,
+        mrs3_mode=mrs3_mode
+    )
+
+    # 4. 복원된 png들을 zip으로 묶기
+    restored_zip_path = os.path.join(temp_dir, "restored_imgs.zip")
+    shutil.make_archive(restored_zip_path[:-4], 'zip', restored_dir)
+
+    # 5. 반환
+    if not os.path.exists(restored_zip_path):
+        raise HTTPException(status_code=500, detail="복원 zip 생성 실패")
+
+    return FileResponse(restored_zip_path, filename="restored_imgs.zip", media_type="application/zip")
