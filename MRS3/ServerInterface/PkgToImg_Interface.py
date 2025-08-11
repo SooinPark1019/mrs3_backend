@@ -196,6 +196,11 @@ def _blend_images_with_contour_distance(A, B, contour, blend=BLEND_SINUSOIDAL):
     h, w = A.shape[:2]
     mask = np.zeros((h, w), dtype=np.uint8)
     cv2.drawContours(mask, [contour], -1, 255, thickness=-1)
+    mask[0,:] = 0
+    mask[h-1,:] = 0
+    mask[:,0] = 0
+    mask[:,w-1] = 0
+    
     dist_transform = cv2.distanceTransform(mask, distanceType=cv2.DIST_L2, maskSize=3)
     max_distance = np.max(dist_transform) * _DIST_CRIT_COEF
     if max_distance == 0:
