@@ -17,6 +17,7 @@ import struct
 import zipfile
 import uuid
 from pathlib import Path
+from datetime import datetime
 
 def compress_imgpresso(img_path, output_path):
     """
@@ -251,7 +252,10 @@ def unzip_server(zip_path, extract_folder):
 TEMP_DIR = "temp"
 
 def get_unique_path(filename: str, suffix: str = "") -> str:
-    """uuid와 원본 파일명, 옵션 suffix로 유니크 경로 생성."""
+    """날짜(YYYYMMDD)/uuid 프리픽스 + suffix + 원본 파일명으로 유니크 경로 생성."""
+    today = datetime.now().strftime("%Y%m%d")
     session_id = str(uuid.uuid4())
     safe_name = Path(filename).name  # 보안: 디렉토리 오염 방지
-    return os.path.join(TEMP_DIR, f"{session_id}_{suffix}{safe_name}")
+    dated_dir = os.path.join(TEMP_DIR, today)
+    os.makedirs(dated_dir, exist_ok=True)
+    return os.path.join(dated_dir, f"{session_id}_{suffix}{safe_name}")
