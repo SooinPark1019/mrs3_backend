@@ -5,6 +5,7 @@ from fastapi import BackgroundTasks
 import os
 import uuid
 from pathlib import Path
+from datetime import datetime
 import shutil
 import cv2
 
@@ -33,10 +34,13 @@ def ensure_temp_dir():
     os.makedirs(TEMP_DIR, exist_ok=True)
 
 def get_unique_path(filename: str, suffix: str = "") -> str:
-    """uuid와 원본 파일명, 옵션 suffix로 유니크 경로 생성."""
+    """날짜(YYYYMMDD)/uuid 프리픽스와 원본 파일명으로 유니크 경로 생성."""
+    today = datetime.now().strftime("%Y%m%d")
     session_id = str(uuid.uuid4())
     safe_name = Path(filename).name  # 보안: 디렉토리 오염 방지
-    return os.path.join(TEMP_DIR, f"{session_id}_{suffix}{safe_name}")
+    dated_dir = os.path.join(TEMP_DIR, today)
+    os.makedirs(dated_dir, exist_ok=True)
+    return os.path.join(dated_dir, f"{session_id}_{suffix}{safe_name}")
 
 async def save_upload_file(upload_file: UploadFile, dest_path: str):
     """업로드 파일을 지정 경로에 저장 (비동기 지원)."""
@@ -72,11 +76,14 @@ async def compress_image(
 
     ensure_temp_dir()
     image_path = get_unique_path(image.filename)
+    today = datetime.now().strftime("%Y%m%d")
+    dated_dir = os.path.join(TEMP_DIR, today)
+    os.makedirs(dated_dir, exist_ok=True)
     await save_upload_file(image, image_path)
 
     kwargs = dict(
         img_path=image_path,
-        output_path=TEMP_DIR,
+        output_path=dated_dir,
         scaler=scaler,
         roi_point_lists=polygons_data,
         pkg_filename="output.pkg"
@@ -108,6 +115,9 @@ async def restore_image(
     # [1] 임시 파일 경로 생성 및 저장
     ensure_temp_dir()
     pkg_path = get_unique_path(pkg.filename)
+    today = datetime.now().strftime("%Y%m%d")
+    dated_dir = os.path.join(TEMP_DIR, today)
+    os.makedirs(dated_dir, exist_ok=True)
     await save_upload_file(pkg, pkg_path)
 
     # [2] 언팩 디렉토리 생성(유니크)
@@ -119,9 +129,9 @@ async def restore_image(
     pkgimg.restore_img_mult_tgs_server(
         input_path=unpacked_dir,
         mrs3_mode=mrs3_mode,
-        output_path=TEMP_DIR
+        output_path=dated_dir
     )
-    restored_image_path = os.path.join(TEMP_DIR, "restored.png")
+    restored_image_path = os.path.join(dated_dir, "restored.png")
     if not os.path.exists(restored_image_path):
         raise HTTPException(status_code=500, detail="복원 이미지 생성 실패")
 
@@ -139,10 +149,11 @@ async def auto_batch_compress(
     manual: True(수동, ROI별도입력), False(자동: YOLO 등)
     """
     ensure_temp_dir()
+    today = datetime.now().strftime("%Y%m%d")
     session_id = str(uuid.uuid4())
-    temp_dir = os.path.join(TEMP_DIR, f"session_{session_id}")
+    temp_dir = os.path.join(TEMP_DIR, today, f"session_{session_id}")
     os.makedirs(temp_dir, exist_ok=True)
-    output_zip_path = os.path.join(TEMP_DIR, f"pkgs_{session_id}.zip")
+    output_zip_path = os.path.join(TEMP_DIR, today, f"pkgs_{session_id}.zip")
 
     for image in images:
         unique_name = f"{uuid.uuid4().hex}_{Path(image.filename).name}"
@@ -177,8 +188,9 @@ async def batch_restore(
     - mrs3_mode: 업스케일 복원 옵션
     """
     ensure_temp_dir()
+    today = datetime.now().strftime("%Y%m%d")
     session_id = str(uuid.uuid4())
-    temp_dir = os.path.join(TEMP_DIR, f"restore_session_{session_id}")
+    temp_dir = os.path.join(TEMP_DIR, today, f"restore_session_{session_id}")
     os.makedirs(temp_dir, exist_ok=True)
 
     # 1. zip 저장 및 압축 해제
